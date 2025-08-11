@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'events',
+    'user',
     'corsheaders',
 
 
@@ -131,3 +132,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CORS_ALLOW_ALL_ORIGINS = True
 ROOT_URLCONF = 'my_events_backend.urls'
+
+AUTH_USER_MODEL = 'users.User'
