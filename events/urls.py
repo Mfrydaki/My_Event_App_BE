@@ -2,6 +2,9 @@ from django.urls import path
 from . import views
 
 urlpatterns = [
-    path('events/', views.event_list, name='event_list'), #event list
-    path('test/', views.test_api) #test endpoint
+    # List + Create
+    path('events/', views.events_view, name='events-list-create'),
+
+    # Retrieve + Update + Delete
+    path('events/<str:event_id>/', views.event_detail_view, name='event-detail'),
 ]

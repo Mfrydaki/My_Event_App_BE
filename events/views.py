@@ -5,7 +5,6 @@ from django.views.decorators.http import require_http_methods
 from bson import ObjectId
 
 from .models import validate_event, to_mongo_dict, to_public_dict
-from ..mongo import events_collection
 
 
 @ensure_csrf_cookie
@@ -16,7 +15,7 @@ def events_view(request):
     List or create events.
 
     GET:
-        - Fetch all events from MongoDB (events_collection.find({})).
+        - Fetch all events from MongoDB.
         - Convert each document with to_public_dict and return a JSON list.
 
     POST:
@@ -29,6 +28,10 @@ def events_view(request):
     Returns:
         JsonResponse: List of events (GET 200) or created event (POST 201).
     """
+    # Lazy import to avoid touching Mongo during Django checks/migrations
+    from my_events_backend.mongo import get_events_collection
+    events_collection = get_events_collection()
+
     if request.method == "GET":
         events_data = events_collection.find({})
         event_list = [to_public_dict(event_doc) for event_doc in events_data]
@@ -71,6 +74,10 @@ def event_detail_view(request, event_id):
     Returns:
         JsonResponse: Event data, updated data, deletion status, or error message.
     """
+    #Lazy import here too
+    from my_events_backend.mongo import get_events_collection
+    events_collection = get_events_collection()
+
     # Validate ObjectId format early
     try:
         oid = ObjectId(event_id)
