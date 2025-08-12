@@ -20,8 +20,12 @@ class User(AbstractUser):
     Returns a string representation of the user.
      By default, it returns the username.
     """
+   
     email = models.EmailField(unique=True)
-    date_of_birth = models.DateTimeField(blank=True, null=True)
+    date_of_birth = models.DateField(blank=True, null=True)
+
+    USERNAME_FIELD = 'email'
+    REQUIRED_FIELDS = ['username'] 
 
     def __str__(self):
-        return self.username
+        return self.email

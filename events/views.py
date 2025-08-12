@@ -6,29 +6,14 @@ from bson import ObjectId
 
 from .models import validate_event, to_mongo_dict, to_public_dict
 
-
 @ensure_csrf_cookie
 @csrf_protect
 @require_http_methods(["GET", "POST"])
 def events_view(request):
     """
-    List or create events.
-
-    GET:
-        - Fetch all events from MongoDB.
-        - Convert each document with to_public_dict and return a JSON list.
-
-    POST:
-        - Parse JSON body from the request.
-        - Validate with validate_event (title/date checks).
-        - Transform to a Mongo-ready dict with to_mongo_dict.
-        - Insert with insert_one and fetch the inserted document.
-        - Return the created event as JSON (201).
-
-    Returns:
-        JsonResponse: List of events (GET 200) or created event (POST 201).
+    GET: Return all events
+    POST: Create new event
     """
-    # Lazy import to avoid touching Mongo during Django checks/migrations
     from my_events_backend.mongo import get_events_collection
     events_collection = get_events_collection()
 
@@ -48,37 +33,12 @@ def events_view(request):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
 
-
 @csrf_protect
 @require_http_methods(["GET", "PUT", "DELETE"])
 def event_detail_view(request, event_id):
-    """
-    Retrieve, update, or delete a single event by its ObjectId.
-
-    Args:
-        event_id (str): MongoDB ObjectId as string.
-
-    GET:
-        - Find the event by _id and return as JSON (200).
-        - If not found, return 404.
-
-    PUT:
-        - Parse JSON body, validate with validate_event.
-        - Update document with $set using to_mongo_dict fields.
-        - Return the updated event as JSON (200).
-
-    DELETE:
-        - Delete the document by _id.
-        - If deleted, return {"deleted": True} with 200; otherwise 404.
-
-    Returns:
-        JsonResponse: Event data, updated data, deletion status, or error message.
-    """
-    #Lazy import here too
     from my_events_backend.mongo import get_events_collection
     events_collection = get_events_collection()
 
-    # Validate ObjectId format early
     try:
         oid = ObjectId(event_id)
     except Exception:
