@@ -1,42 +1,52 @@
 import json
 from django.http import JsonResponse
-from django.views.decorators.csrf import ensure_csrf_cookie, csrf_protect
+from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from bson import ObjectId
 
+from my_events_backend.mongo import get_events_collection
+from my_events_backend.auth import require_jwt
 from .models import validate_event, to_mongo_dict, to_public_dict
 
-@ensure_csrf_cookie
-@csrf_protect
+@csrf_exempt
 @require_http_methods(["GET", "POST"])
+@require_jwt
 def events_view(request):
     """
-    GET: Return all events
-    POST: Create new event
+    GET: Public - return all events (sorted by date)
+    POST: Protected - create new event (requires JWT)
     """
-    from my_events_backend.mongo import get_events_collection
     events_collection = get_events_collection()
 
     if request.method == "GET":
-        events_data = events_collection.find({})
-        event_list = [to_public_dict(event_doc) for event_doc in events_data]
+        cursor = events_collection.find({}).sort("date", 1)
+        event_list = [to_public_dict(doc) for doc in cursor]
         return JsonResponse(event_list, safe=False, status=200)
 
-    if request.method == "POST":
-        try:
-            data_from_frontend = json.loads(request.body.decode("utf-8"))
-            validate_event(data_from_frontend)
-            event_to_save = to_mongo_dict(data_from_frontend)
-            insert_result = events_collection.insert_one(event_to_save)
-            saved_event_doc = events_collection.find_one({"_id": insert_result.inserted_id})
-            return JsonResponse(to_public_dict(saved_event_doc), status=201)
-        except Exception as e:
-            return JsonResponse({"error": str(e)}, status=400)
+    # POST (protected)
+    try:
+        if (request.content_type or "").split(";")[0].strip() != "application/json":
+            return JsonResponse({"error": "Content-Type must be application/json"}, status=415)
 
-@csrf_protect
+        data = json.loads(request.body.decode("utf-8") or "{}")
+        validate_event(data)
+        event_doc = to_mongo_dict(data)
+        result = events_collection.insert_one(event_doc)
+        saved_event = events_collection.find_one({"_id": result.inserted_id})
+        return JsonResponse(to_public_dict(saved_event), status=201)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
+
+@csrf_exempt
 @require_http_methods(["GET", "PUT", "DELETE"])
+@require_jwt
 def event_detail_view(request, event_id):
-    from my_events_backend.mongo import get_events_collection
+    """
+    GET: Public - return one event by ID
+    PUT: Protected - update event (requires JWT)
+    DELETE: Protected - delete event (requires JWT)
+    """
     events_collection = get_events_collection()
 
     try:
@@ -52,17 +62,22 @@ def event_detail_view(request, event_id):
 
     if request.method == "PUT":
         try:
-            updated_data = json.loads(request.body.decode("utf-8"))
+            if (request.content_type or "").split(";")[0].strip() != "application/json":
+                return JsonResponse({"error": "Content-Type must be application/json"}, status=415)
+
+            updated_data = json.loads(request.body.decode("utf-8") or "{}")
             validate_event(updated_data)
-            event_to_update = to_mongo_dict(updated_data)
-            events_collection.update_one({"_id": oid}, {"$set": event_to_update})
-            updated_event_doc = events_collection.find_one({"_id": oid})
-            return JsonResponse(to_public_dict(updated_event_doc), status=200)
+            update_doc = to_mongo_dict(updated_data)
+            res = events_collection.update_one({"_id": oid}, {"$set": update_doc})
+            if res.matched_count == 0:
+                return JsonResponse({"error": "Not found"}, status=404)
+            updated_event = events_collection.find_one({"_id": oid})
+            return JsonResponse(to_public_dict(updated_event), status=200)
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
 
-    if request.method == "DELETE":
-        delete_event = events_collection.delete_one({"_id": oid})
-        if delete_event.deleted_count == 1:
-            return JsonResponse({"deleted": True}, status=200)
-        return JsonResponse({"error": "Not found"}, status=404)
+    # DELETE
+    res = events_collection.delete_one({"_id": oid})
+    if res.deleted_count == 1:
+        return JsonResponse({"deleted": True}, status=200)
+    return JsonResponse({"error": "Not found"}, status=404)

@@ -14,10 +14,12 @@ def get_client() -> MongoClient:
         uri = getattr(settings, "MONGODB_URI", None)
         if not uri:
             raise RuntimeError("MONGODB_URI is missing from settings/.env")
-        _client = MongoClient(uri, tlsCAFile=certifi.where())
-        # προαιρετικά: έλεγχος σύνδεσης
-        _client.admin.command("ping")
-    return _client
+        _client = MongoClient(
+            uri,
+            tlsCAFile=certifi.where(),
+            serverSelectionTimeoutMS=5000  # σωστή παράμετρος
+        )
+    return _client  # πρέπει να επιστρέφεται!
 
 def get_db():
     """Return the configured MongoDB database (cached)."""

@@ -1,31 +1,47 @@
-from django.db import models
-from django.contrib.auth.models import AbstractUser
+# users/models.py
+from typing import Dict, Any, Mapping, Optional
+import re
+from django.contrib.auth.hashers import make_password, check_password
+from bson import ObjectId
 
-class User(AbstractUser):
-    """
-    Custom User model extending Django's AbstractUser.
+EMAIL_RE = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
 
-    Fields inherited from AbstractUser include:
-        - username
-        - first_name
-        - last_name
-        - password
-        - is_active, is_staff, is_superuser
-        - date_joined, last_login
+def validate_register(d: Dict[str, Any]) -> None:
+    email = str(d.get("email", "") or "").strip().lower()
+    password = str(d.get("password", "") or "")
+    if not email or not EMAIL_RE.match(email):
+        raise ValueError("Valid email is required")
+    if not password:
+        raise ValueError("Password is required")
+    # προαιρετικά: min length, complexity, κλπ.
 
-    Custom fields added:
-        email (unique): User's email address, must be unique across all users.
-        date_of_birth: Optional field storing the user's date of birth.
+def validate_login(d: Dict[str, Any]) -> None:
+    email = str(d.get("email", "") or "").strip().lower()
+    password = str(d.get("password", "") or "")
+    if not email or not EMAIL_RE.match(email):
+        raise ValueError("Valid email is required")
+    if not password:
+        raise ValueError("Password is required")
 
-    Returns a string representation of the user.
-     By default, it returns the username.
-    """
-   
-    email = models.EmailField(unique=True)
-    date_of_birth = models.DateField(blank=True, null=True)
+def to_mongo_user(d: Mapping[str, Any]) -> Dict[str, Any]:
+    return {
+        "email": str(d["email"]).strip().lower(),
+        "password": make_password(str(d["password"])),
+        "first_name": str(d.get("first_name", "") or "").strip(),
+        "last_name": str(d.get("last_name", "") or "").strip(),
+        "date_of_birth": str(d.get("date_of_birth", "") or "").strip() or None,
+    }
 
-    USERNAME_FIELD = 'email'
-    REQUIRED_FIELDS = ['username'] 
+def user_to_public(doc: Mapping[str, Any]) -> Dict[str, Any]:
+    _id = doc.get("_id")
+    uid: Optional[str] = str(_id) if isinstance(_id, ObjectId) else (str(_id) if _id else None)
+    return {
+        "id": uid,
+        "email": str(doc.get("email", "") or "").lower(),
+        "first_name": str(doc.get("first_name", "") or ""),
+        "last_name": str(doc.get("last_name", "") or ""),
+        "date_of_birth": doc.get("date_of_birth") or None,
+    }
 
-    def __str__(self):
-        return self.email
+def verify_password(hashed: str, raw: str) -> bool:
+    return check_password(raw, hashed)
