@@ -1,4 +1,3 @@
-# users/models.py
 from typing import Dict, Any, Mapping, Optional
 import re
 from django.contrib.auth.hashers import make_password, check_password
@@ -12,8 +11,8 @@ def validate_register(d: Dict[str, Any]) -> None:
 
     Notes
     -----
-    - Checks that `email` is valid and not empty.
-    - Checks that `password` is provided.
+    - Checks that "email" is valid and not empty.
+    - Checks that "password" is provided.
 
     Returns
     -------
@@ -23,13 +22,14 @@ def validate_register(d: Dict[str, Any]) -> None:
     Raises
     ------
     ValueError
-    If `email` is invalid or missing.
-    If `password` is missing.
+    If "email" is invalid or missing.
+    If "password" is missing.
     """
     
     email = str(d.get("email", "") or "").strip().lower()
     password = str(d.get("password", "") or "")
-    if not email or not EMAIL_RE.match(email):
+
+    if not email or not EMAIL_RE.fullmatch(email):
         raise ValueError("Valid email is required")
     if not password:
         raise ValueError("Password is required")
@@ -40,8 +40,8 @@ Validate login data for authenticating a user.
 
 Notes
     -----
-- Checks that `email` is valid and not empty.
- - Checks that `password` is provided.
+- Checks that "email" is valid and not empty.
+ - Checks that "password" is provided.
 
 Returns
 -------
@@ -51,13 +51,14 @@ Function completes silently if validation passes.
 Raises
 ------
 ValueError
-If `email` is invalid or missing.
-If `password` is missing.
+If "email" is invalid or missing.
+If "password" is missing.
 """
     
  email = str(d.get("email", "") or "").strip().lower()
  password = str(d.get("password", "") or "")
- if not email or not EMAIL_RE.match(email):
+
+ if not email or not EMAIL_RE.fullmatch(email):
         raise ValueError("Valid email is required")
  if not password:
         raise ValueError("Password is required")
@@ -68,19 +69,19 @@ def to_mongo_user(d: Mapping[str, Any]) -> Dict[str, Any]:
 
     Notes
     -----
-    - Lowercases the `email`.
-    - Hashes the `password` using Django hashers.
+    - Lowercases the "email".
+    - Hashes the "password" using Django hashers.
     - Strips extra spaces from optional fields.
 
     Parameters
     ----------
     d : Mapping
-        Dictionary-like object with at least `email` and `password`.
+    Dictionary-like object with at least "email" and "password".
 
     Returns
     -------
     dict
-        A MongoDB-ready user document for insertion.
+    A MongoDB-ready user document for insertion.
     """
     return {
         "email": str(d["email"]).strip().lower(),
@@ -96,18 +97,18 @@ def user_to_public(doc: Mapping[str, Any]) -> Dict[str, Any]:
 
     Notes
     -----
-    - Converts `_id` (ObjectId) to string.
-    - Excludes sensitive fields like `password`.
+    - Converts "_id" (ObjectId) to string.
+    - Excludes sensitive fields like "password".
 
     Parameters
     ----------
     doc : Mapping
-        MongoDB user document.
+    MongoDB user document.
 
     Returns
     -------
     dict
-        Public-safe user data ready for API responses.
+    Public-safe user data ready for API responses.
     """
     _id = doc.get("_id")
     uid: Optional[str] = str(_id) if isinstance(_id, ObjectId) else (str(_id) if _id else None)
@@ -126,13 +127,13 @@ def verify_password(hashed: str, raw: str) -> bool:
     Parameters
     ----------
     hashed : str
-        The hashed password from the database.
+    The hashed password from the database.
     raw : str
-        The plain text password to verify.
+    The plain text password to verify.
 
     Returns
     -------
     bool
-        True if the password matches, False otherwise.
+    True if the password matches, False otherwise.
     """
     return check_password(raw, hashed)

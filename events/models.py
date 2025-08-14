@@ -1,3 +1,4 @@
+
 from datetime import datetime, date
 from typing import Dict, Any, Mapping, Optional
 import re
@@ -10,10 +11,20 @@ def validate_event(d: Dict[str, Any]) -> None:
     """
     Validate event data before saving to MongoDB.
 
+    Notes
+    -----
+    - Ensures `title` exists and respects MAX_TITLE_LENGTH.
+    - Ensures `date` exists and is a valid ISO calendar date (YYYY-MM-DD).
+
     Parameters
     ----------
     d : dict
     Event data dictionary.
+
+    Returns
+    -------
+    None
+    Function completes silently if validation passes.
 
     Raises
     ------
@@ -30,17 +41,23 @@ def validate_event(d: Dict[str, Any]) -> None:
         raise ValueError("Date is required")
 
     date_str = str(d["date"] or "").strip()
-    if not _ISO_DATE_RE.match(date_str):
+    if not _ISO_DATE_RE.fullmatch(date_str):
         raise ValueError("Date must be ISO string: YYYY-MM-DD")
     try:
-        date.fromisoformat(date_str)
+        date.fromisoformat(date_str)  # validates calendar correctness
     except Exception:
         raise ValueError("Invalid calendar date (use real YYYY-MM-DD)")
 
 
-def to_mongo_dict(d: Mapping[str, Any]) -> Dict[str, Any]:
+def to_mongo_event(d: Mapping[str, Any]) -> Dict[str, Any]:
     """
-    Prepare a clean dict for MongoDB insert/update.
+    Convert incoming event data into a MongoDB-ready document.
+
+    Notes
+    -----
+    - Trims whitespace.
+    - Keeps `date` as ISO string (YYYY-MM-DD) for simple lexicographic sorting.
+    - Does not set `created_by`; views should attach the authenticated user id.
 
     Parameters
     ----------
@@ -50,7 +67,7 @@ def to_mongo_dict(d: Mapping[str, Any]) -> Dict[str, Any]:
     Returns
     -------
     dict
-    Sanitized event data for MongoDB storage.
+    Sanitized event document for MongoDB storage.
     """
     return {
         "title": str(d.get("title", "") or "").strip(),
@@ -58,12 +75,18 @@ def to_mongo_dict(d: Mapping[str, Any]) -> Dict[str, Any]:
         "details": str(d.get("details", "") or "").strip(),
         "date": str(d.get("date", "") or "").strip(),
         "image": str(d.get("image", "") or "").strip(),
+        # "created_by": <to be set in the view using request.user_id>
     }
 
 
-def to_public_dict(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
+def event_to_public(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
     """
     Convert a MongoDB event document into a public-facing dictionary.
+
+    Notes
+    -----
+    - Converts `_id` (ObjectId) to string.
+    - Normalizes `date` to ISO string (YYYY-MM-DD) if stored as datetime/date or ISO datetime.
 
     Parameters
     ----------
@@ -73,7 +96,7 @@ def to_public_dict(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
     Returns
     -------
     dict
-    Public-safe event dictionary.
+    Public-safe event dictionary ready for API responses.
     """
     _id = event_doc.get("_id")
     id_str: Optional[str] = str(_id) if _id is not None else None
@@ -85,14 +108,15 @@ def to_public_dict(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
     elif isinstance(raw_date, date):
         date_str = raw_date.isoformat()
     elif isinstance(raw_date, str):
-        raw_date = raw_date.strip()
-        if "T" in raw_date:
+        s = raw_date.strip()
+        if "T" in s:
+            # handle ISO datetime strings e.g. 2025-08-14T10:00:00
             try:
-                date_str = datetime.fromisoformat(raw_date).date().isoformat()
+                date_str = datetime.fromisoformat(s).date().isoformat()
             except Exception:
-                date_str = raw_date
+                date_str = s
         else:
-            date_str = raw_date
+            date_str = s
 
     return {
         "id": id_str,
@@ -101,4 +125,5 @@ def to_public_dict(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
         "details": str(event_doc.get("details", "") or "").strip(),
         "date": date_str,
         "image": str(event_doc.get("image", "") or "").strip(),
+        "created_by": str(event_doc.get("created_by", "") or "").strip(),
     }
