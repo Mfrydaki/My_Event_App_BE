@@ -5,11 +5,20 @@ import re
 MAX_TITLE_LENGTH = 200
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
+
 def validate_event(d: Dict[str, Any]) -> None:
     """
-    Basic validation before saving to MongoDB.
-    - Require non-empty title (max 200 chars)
-    - Require date in 'YYYY-MM-DD' format (ISO string)
+    Validate event data before saving to MongoDB.
+
+    Parameters
+    ----------
+    d : dict
+    Event data dictionary.
+
+    Raises
+    ------
+    ValueError
+    If validation fails (missing title, invalid date, etc.).
     """
     title = str(d.get("title", "") or "").strip()
     if not title:
@@ -28,11 +37,20 @@ def validate_event(d: Dict[str, Any]) -> None:
     except Exception:
         raise ValueError("Invalid calendar date (use real YYYY-MM-DD)")
 
+
 def to_mongo_dict(d: Mapping[str, Any]) -> Dict[str, Any]:
     """
     Prepare a clean dict for MongoDB insert/update.
-    - Trim strings
-    - Keep date as 'YYYY-MM-DD'
+
+    Parameters
+    ----------
+    d : Mapping[str, Any]
+    Event data.
+
+    Returns
+    -------
+    dict
+    Sanitized event data for MongoDB storage.
     """
     return {
         "title": str(d.get("title", "") or "").strip(),
@@ -42,11 +60,20 @@ def to_mongo_dict(d: Mapping[str, Any]) -> Dict[str, Any]:
         "image": str(d.get("image", "") or "").strip(),
     }
 
+
 def to_public_dict(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
     """
-    Public dict for API/React
-    - id as string
-    - date as ISO string (YYYY-MM-DD if possible)
+    Convert a MongoDB event document into a public-facing dictionary.
+
+    Parameters
+    ----------
+    event_doc : Mapping[str, Any]
+    The event document from MongoDB.
+
+    Returns
+    -------
+    dict
+    Public-safe event dictionary.
     """
     _id = event_doc.get("_id")
     id_str: Optional[str] = str(_id) if _id is not None else None

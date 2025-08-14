@@ -1,5 +1,5 @@
 import json
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpRequest
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_http_methods
 from bson import ObjectId
@@ -8,13 +8,32 @@ from my_events_backend.mongo import get_events_collection
 from my_events_backend.auth import optional_jwt
 from .models import validate_event, to_mongo_dict, to_public_dict
 
+
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
-@optional_jwt   # <-- GET public, POST θα ελέγξουμε token μέσα
-def events_view(request):
+@optional_jwt
+def events_view(request: HttpRequest):
     """
-    GET: Public - return all events (sorted by date)
-    POST: Protected - create new event (requires JWT)
+    List or create events.
+
+    GET
+        ---
+    Public endpoint. Returns all events sorted by date.
+
+    POST
+    ----
+    Protected endpoint. Requires JWT token.
+    Creates a new event.
+
+    Parameters
+    ----------
+    request : HttpRequest
+    Django request object.
+
+    Returns
+    -------
+    JsonResponse
+    List of events (GET) or created event (POST).
     """
     events_collection = get_events_collection()
 
@@ -23,7 +42,6 @@ def events_view(request):
         event_list = [to_public_dict(doc) for doc in cursor]
         return JsonResponse(event_list, safe=False, status=200)
 
-    # POST (protected)
     if not getattr(request, "user_id", None):
         return JsonResponse({"error": "Unauthorized"}, status=401)
 
@@ -34,7 +52,6 @@ def events_view(request):
         data = json.loads(request.body.decode("utf-8") or "{}")
         validate_event(data)
         event_doc = to_mongo_dict(data)
-        # προαιρετικά: event_doc["owner_id"] = request.user_id
         result = events_collection.insert_one(event_doc)
         saved_event = events_collection.find_one({"_id": result.inserted_id})
         return JsonResponse(to_public_dict(saved_event), status=201)
@@ -44,12 +61,36 @@ def events_view(request):
 
 @csrf_exempt
 @require_http_methods(["GET", "PUT", "DELETE"])
-@optional_jwt   # <-- GET public, PUT/DELETE checks token 
-def event_detail_view(request, event_id):
+@optional_jwt
+def event_detail_view(request: HttpRequest, event_id: str):
     """
-    GET: Public - return one event by ID
-    PUT: Protected - update event (requires JWT)
-    DELETE: Protected - delete event (requires JWT)
+    Retrieve, update, or delete an event by ID.
+
+    GET
+    ---
+    Public endpoint. Returns one event by ID.
+
+    PUT
+    ---
+    Protected endpoint. Requires JWT token.
+    Updates the event.
+
+    DELETE
+    ------
+    Protected endpoint. Requires JWT token.
+    Deletes the event.
+
+    Parameters
+    ----------
+    request : HttpRequest
+        Django request object.
+    event_id : str
+        The event's MongoDB ObjectId (as string).
+
+    Returns
+    -------
+    JsonResponse
+        The event (GET), updated event (PUT), or deletion result (DELETE).
     """
     events_collection = get_events_collection()
 
@@ -64,7 +105,6 @@ def event_detail_view(request, event_id):
             return JsonResponse({"error": "Not found"}, status=404)
         return JsonResponse(to_public_dict(event_doc), status=200)
 
-    # Από εδώ και κάτω protected:
     if not getattr(request, "user_id", None):
         return JsonResponse({"error": "Unauthorized"}, status=401)
 
@@ -84,9 +124,7 @@ def event_detail_view(request, event_id):
         except Exception as e:
             return JsonResponse({"error": str(e)}, status=400)
 
-    # DELETE
     res = events_collection.delete_one({"_id": oid})
     if res.deleted_count == 1:
         return JsonResponse({"deleted": True}, status=200)
     return JsonResponse({"error": "Not found"}, status=404)
-

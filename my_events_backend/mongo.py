@@ -7,8 +7,16 @@ from django.conf import settings
 _client = None
 _db = None
 
+
 def get_client() -> MongoClient:
-    """Create and cache a single MongoClient lazily."""
+    """
+    Get (and cache) a MongoDB client instance.
+
+    Returns
+    -------
+    MongoClient
+    A connected MongoDB client.
+    """
     global _client
     if _client is None:
         uri = getattr(settings, "MONGODB_URI", None)
@@ -17,12 +25,20 @@ def get_client() -> MongoClient:
         _client = MongoClient(
             uri,
             tlsCAFile=certifi.where(),
-            serverSelectionTimeoutMS=5000  # σωστή παράμετρος
+            serverSelectionTimeoutMS=5000
         )
-    return _client  # πρέπει να επιστρέφεται!
+    return _client
+
 
 def get_db():
-    """Return the configured MongoDB database (cached)."""
+    """
+    Get (and cache) the target MongoDB database.
+
+    Returns
+    -------
+    Database
+    The MongoDB database object.
+    """
     global _db
     if _db is None:
         client = get_client()
@@ -30,19 +46,38 @@ def get_db():
         _db = client[db_name]
     return _db
 
+
 def get_events_collection():
-    """Return the events collection."""
+    """
+    Get the events collection from the database.
+
+    Returns
+    -------
+    Collection
+        The MongoDB collection for events.
+    """
     name = getattr(settings, "MONGODB_EVENTS_COLLECTION", "events")
     return get_db()[name]
 
+
 def get_users_collection():
-    """Return the users collection."""
+    """
+    Get the users collection from the database.
+
+    Returns
+    -------
+    Collection
+        The MongoDB collection for users.
+    """
     name = getattr(settings, "MONGODB_USERS_COLLECTION", "users")
     return get_db()[name]
 
+
 @atexit.register
 def _close_client():
-    """Close the global MongoClient on process exit."""
+    """
+    Close the global MongoClient on process exit.
+    """
     global _client
     if _client is not None:
         _client.close()

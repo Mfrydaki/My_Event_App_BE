@@ -16,6 +16,27 @@ from .models import (
 @csrf_exempt
 @require_http_methods(["POST"])
 def register_view(request):
+    """
+    Create a new user account.
+
+    POST
+    ----
+    - Public endpoint (no authentication required).
+    - Expects JSON body with at least `email` and `password`.
+    - Password is stored hashed using Django hashers.
+    - Fails with HTTP 409 if email already exists.
+    - On success, returns public user data and a JWT accesstoken.
+
+    Returns
+    -------
+    JsonResponse
+    201 Created: {"user": <public_user>, "access": <jwt>} on success.
+    409 Conflict if email already exists.
+    400 Bad Request for validation or other errors.
+    
+    if (request.content_type or "").split(";")[0].strip() != "application/json":
+    return JsonResponse({"error": "Content-Type must be application/json"}, status=415)
+    """
     try:
         data = json.loads(request.body.decode("utf-8") or "{}")
         validate_register(data)
@@ -34,6 +55,26 @@ def register_view(request):
 @csrf_exempt
 @require_http_methods(["POST"])
 def login_view(request):
+    """
+    Authenticate an existing user and return an access token.
+
+    POST
+    ----
+    - Public endpoint (no authentication required).
+    - Expects JSON body with `email` and `password`.
+    - Verifies password against stored hash.
+    - On success, returns public user data and a JWT access token.
+
+    Returns
+    -------
+    JsonResponse
+        200 OK: {"user": <public_user>, "access": <jwt>} on success.
+        401 Unauthorized if credentials are invalid.
+        400 Bad Request for validation or other errors.
+    """
+    if (request.content_type or "").split(";")[0].strip() != "application/json":
+        return JsonResponse({"error": "Content-Type must be application/json"}, status=415)
+
     try:
         data = json.loads(request.body.decode("utf-8") or "{}")
         validate_login(data)
@@ -47,3 +88,34 @@ def login_view(request):
         return JsonResponse({"user": user_to_public(doc), "access": token}, status=200)
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)
+    
+@csrf_exempt
+@require_http_methods(["GET"])
+@require_jwt
+def me_view(request):
+    """
+    Get the authenticated user's profile.
+
+    GET
+    ---
+    - Protected endpoint (requires JWT in `Authorization` header as `Bearer <token>`).
+    - Reads user ID from token and returns public user data.
+
+    Returns
+    -------
+    JsonResponse
+        200 OK: {"id": ..., "email": ..., "first_name": ..., "last_name": ..., "date_of_birth": ...}
+        404 Not Found if the user does not exist in the database.
+        401 Unauthorized if JWT is missing or invalid.
+    """
+    col = get_users_collection()
+    user_id = request.jwt.get("sub")
+
+    try:
+        doc = col.find_one({"_id": ObjectId(user_id)})
+        if not doc:
+            return JsonResponse({"error": "Not found"}, status=404)
+        return JsonResponse(user_to_public(doc), status=200)
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=400)
+
