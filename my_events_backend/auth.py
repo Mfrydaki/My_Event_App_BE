@@ -130,14 +130,13 @@ def optional_jwt(view_func):
 
     Behavior
     --------
-    - If a valid Bearer token is provided, sets `request.user_id` and
-      `request.user_email` from claims.
+    - If a valid Bearer token is provided, sets "request.user_id" and "request.user_email" from claims.
     - If there is no token or it is invalid/expired, continues anonymously.
 
     Parameters
     ----------
     view_func : callable
-        The Django view function to wrap.
+    The Django view function to wrap.
 
     Returns
     -------

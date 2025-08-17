@@ -13,8 +13,8 @@ def validate_event(d: Dict[str, Any]) -> None:
 
     Notes
     -----
-    - Ensures `title` exists and respects MAX_TITLE_LENGTH.
-    - Ensures `date` exists and is a valid ISO calendar date (YYYY-MM-DD).
+    - Ensures "title" exists and respects MAX_TITLE_LENGTH.
+    - Ensures "date" exists and is a valid ISO calendar date (YYYY-MM-DD).
 
     Parameters
     ----------
@@ -56,8 +56,8 @@ def to_mongo_event(d: Mapping[str, Any]) -> Dict[str, Any]:
     Notes
     -----
     - Trims whitespace.
-    - Keeps `date` as ISO string (YYYY-MM-DD) for simple lexicographic sorting.
-    - Does not set `created_by`; views should attach the authenticated user id.
+    - Keeps "date" as ISO string (YYYY-MM-DD) for simple lexicographic sorting.
+    - Does not set "created_by"; views should attach the authenticated user id.
 
     Parameters
     ----------
@@ -85,8 +85,8 @@ def event_to_public(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
 
     Notes
     -----
-    - Converts `_id` (ObjectId) to string.
-    - Normalizes `date` to ISO string (YYYY-MM-DD) if stored as datetime/date or ISO datetime.
+    - Converts "_id" (ObjectId) to string.
+    - Normalizes date to ISO string (YYYY-MM-DD) if stored as datetime/date or ISO datetime.
 
     Parameters
     ----------
