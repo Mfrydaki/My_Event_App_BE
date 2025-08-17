@@ -1,4 +1,3 @@
-# my_events_backend/mongo.py
 import atexit
 import certifi
 from pymongo import MongoClient
@@ -54,7 +53,7 @@ def get_events_collection():
     Returns
     -------
     Collection
-        The MongoDB collection for events.
+    The MongoDB collection for events.
     """
     name = getattr(settings, "MONGODB_EVENTS_COLLECTION", "events")
     return get_db()[name]
@@ -67,7 +66,7 @@ def get_users_collection():
     Returns
     -------
     Collection
-        The MongoDB collection for users.
+    The MongoDB collection for users.
     """
     name = getattr(settings, "MONGODB_USERS_COLLECTION", "users")
     return get_db()[name]

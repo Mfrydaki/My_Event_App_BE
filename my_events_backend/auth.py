@@ -1,136 +1,164 @@
-# my_events_backend/auth.py
-import os, time, jwt
+import os
+import time
+import jwt
 from functools import wraps
 from django.http import JsonResponse
+from django.http import HttpRequest
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "change-this-in-prod")
-JWT_ALG = "HS256"
-ACCESS_MIN = int(os.environ.get("JWT_ACCESS_MINUTES", "30"))
-LEeway_SEC = 30  # small clock skew tolerance
+# Configuration
+SECRET: str = os.environ.get("JWT_SECRET", "my-secret")
+ALGORITHM: str = "HS256"
+LIFETIME_MINUTES: int = 30  # Token lifetime in minutes
 
-def make_access_token(user_id: str, email: str) -> str:
+
+def make_token(user_id: str, email: str) -> str:
     """
     Create a signed JWT access token.
 
-    Args:
-        user_id (str): The unique identifier of the user (usually a database ID).
-        email (str): The user's email address.
+    Parameters
+    ----------
+    user_id : str
+    Unique identifier of the user (usually a MongoDB _id as string).
+    email : str
+    The user's email address.
 
-    Returns:
-        str: Encoded JWT token string.
+    Returns
+    -------
+    str
+    Encoded JWT token string.
     """
     now = int(time.time())
     payload = {
-        "sub": user_id,
-        "email": (email or "").lower(),
-        "iat": now,  # issued at
-        "exp": now + ACCESS_MIN * 60,  # expiration timestamp
-        "type": "access",
+        "sub": user_id,                      # subject (who the token is for)
+        "email": (email or "").lower(),      # normalized email
+        "iat": now,                           # issued at (unix seconds)
+        "exp": now + LIFETIME_MINUTES * 60,   # expiration (unix seconds)
     }
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+    return jwt.encode(payload, SECRET, algorithm=ALGORITHM)
 
-def decode_token(token: str):
+
+def decode_token(token: str) -> dict:
     """
-    Decode and validate a JWT token.
+    Decode and verify a JWT token.
 
-    Args:
-        token (str): The JWT token string to decode.
+    Parameters
+    ----------
+    token : str
+    The encoded JWT string.
 
-    Returns:
-        dict: The decoded claims (payload).
+    Returns
+    -------
+    dict
+    The decoded payload (claims).
 
-    Raises:
-        jwt.ExpiredSignatureError: If the token has expired.
-        jwt.InvalidTokenError: If the token is invalid or has bad signature.
+    Raises
+    ------
+    jwt.ExpiredSignatureError
+    If the token has expired.
+    jwt.InvalidTokenError
+    If the token is invalid or has a bad signature.
     """
-    return jwt.decode(
-        token,
-        JWT_SECRET,
-        algorithms=[JWT_ALG],
-        options={"require": ["exp", "iat"]},
-        leeway=LEeway_SEC,
-    )
+    return jwt.decode(token, SECRET, algorithms=[ALGORITHM])
 
-def _extract_bearer_token(request):
+
+def _get_token_from_request(request: HttpRequest) -> str | None:
     """
-    Extract the Bearer token from the Authorization header.
+    Extract a Bearer token from the Authorization header.
 
-    Args:
-        request (HttpRequest): The Django HTTP request object.
+    Expected Header
+    ---------------
+    Authorization: Bearer <token>
 
-    Returns:
-        str | None: The token string if found, otherwise None.
+    Parameters
+    ----------
+    request : HttpRequest
+    The Django request object.
+
+    Returns
+    -------
+    str | None
+    The token string if present, otherwise None.
     """
     auth = request.META.get("HTTP_AUTHORIZATION", "")
-    parts = auth.strip().split()
-    if len(parts) == 2 and parts[0].lower() == "bearer":
-        return parts[1].strip()
+    if auth.startswith("Bearer "):
+        return auth.split(" ", 1)[1].strip()
     return None
+
 
 def require_jwt(view_func):
     """
-    Decorator to require a valid JWT access token for a view.
+    Require a valid JWT token.
 
-    - Returns HTTP 401 if no valid Bearer token is provided.
-    - Sets `request.jwt` to the decoded claims.
-    - Sets `request.user_id` to the `sub` claim.
+    Behavior
+    --------
+    - Returns HTTP 401 if the token is missing, expired, or invalid.
+    - On success, sets `request.user_id` and `request.user_email` from claims.
 
-    Usage:
-        @require_jwt
-        def protected_view(request):
-            ...
+    Parameters
+    ----------
+    view_func : callable
+    The Django view function to wrap.
+
+    Returns
+    -------
+    callable
+    Wrapped view function that enforces JWT authentication.
     """
     @wraps(view_func)
-    def wrapper(request, *args, **kwargs):
-        token = _extract_bearer_token(request)
+    def wrapper(request: HttpRequest, *args, **kwargs):
+        token = _get_token_from_request(request)
         if not token:
             return JsonResponse({"error": "Missing Bearer token"}, status=401)
+
         try:
             claims = decode_token(token)
-            if claims.get("type") != "access":
-                return JsonResponse({"error": "Invalid token type"}, status=401)
         except jwt.ExpiredSignatureError:
-            return JsonResponse({"error": "Token expired"}, status=401)
+            return JsonResponse({"error": "Token has expired"}, status=401)
         except jwt.InvalidTokenError:
             return JsonResponse({"error": "Invalid token"}, status=401)
 
-        request.jwt = claims
         request.user_id = claims.get("sub")
+        request.user_email = claims.get("email")
         return view_func(request, *args, **kwargs)
+
     return wrapper
+
 
 def optional_jwt(view_func):
     """
-    Decorator to optionally accept a JWT token for a view.
+    Optionally accept a JWT token.
 
-    - If a valid Bearer token is provided, sets `request.jwt` and `request.user_id`.
-    - If no token is provided (or it is invalid), continues without raising 401.
-    - Useful for public GET endpoints that can be accessed by both authenticated
-      and unauthenticated users.
+    Behavior
+    --------
+    - If a valid Bearer token is provided, sets `request.user_id` and
+      `request.user_email` from claims.
+    - If there is no token or it is invalid/expired, continues anonymously.
 
-    Usage:
-        @optional_jwt
-        def public_view(request):
-            if request.user_id:
-                # Authenticated user
-                ...
-            else:
-                # Anonymous access
-                ...
+    Parameters
+    ----------
+    view_func : callable
+        The Django view function to wrap.
+
+    Returns
+    -------
+    callable
+    Wrapped view function that reads JWT when available.
     """
     @wraps(view_func)
-    def wrapper(request, *args, **kwargs):
-        request.jwt = None
+    def wrapper(request: HttpRequest, *args, **kwargs):
         request.user_id = None
-        token = _extract_bearer_token(request)
+        request.user_email = None
+
+        token = _get_token_from_request(request)
         if token:
             try:
                 claims = decode_token(token)
-                if claims.get("type") == "access":
-                    request.jwt = claims
-                    request.user_id = claims.get("sub")
+                request.user_id = claims.get("sub")
+                request.user_email = claims.get("email")
             except jwt.InvalidTokenError:
-                # Ignore invalid token for public routes
+                # Ignore invalid/expired token for public routes
                 pass
+
         return view_func(request, *args, **kwargs)
+
     return wrapper
