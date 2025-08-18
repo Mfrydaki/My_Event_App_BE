@@ -11,7 +11,7 @@ ALGORITHM: str = "HS256"
 LIFETIME_MINUTES: int = 30  # Token lifetime in minutes
 
 
-def make_token(user_id: str, email: str) -> str:
+def make_access_token(user_id: str, email: str) -> str:
     """
     Create a signed JWT access token.
 

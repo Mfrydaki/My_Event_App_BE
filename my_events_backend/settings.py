@@ -3,14 +3,13 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-load_dotenv()
-
-# ── Paths
+# ── Paths / .env
 BASE_DIR = Path(__file__).resolve().parent.parent
+load_dotenv(BASE_DIR / ".env")
 
 # ── Security / Core
 SECRET_KEY = os.getenv("SECRET_KEY", "dev-secret-key-do-not-use-in-prod")
-DEBUG = True
+DEBUG = os.getenv("DEBUG", "True") == "True"
 ALLOWED_HOSTS = ["localhost", "127.0.0.1"]
 
 # ── Apps
@@ -23,16 +22,18 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
 
-    # My apps
+    # Third-party
+    "rest_framework",
+    # "corsheaders",  # enable if you need CORS for React
+
+    # Project apps (PyMongo-based)
     "events",
     "users",
-    "rest_framework"
-    # "corsheaders",  # CORS για React (προαιρετικό)
 ]
 
 # ── Middleware
 MIDDLEWARE = [
-    # "corsheaders.middleware.CorsMiddleware",  #  CORS
+    # "corsheaders.middleware.CorsMiddleware",  # enable if you use CORS
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -63,7 +64,7 @@ TEMPLATES = [
     },
 ]
 
-# ── Database 
+# ── Database (Django default for admin/sessions; your app data is in Mongo)
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.sqlite3",
@@ -83,17 +84,23 @@ STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"] if (BASE_DIR / "static").exists() else []
 
-# ── Auth (custom User)
-AUTH_USER_MODEL = "users.User"
+# ── Auth
 
-# ── CORS 
+AUTH_USER_MODEL = "auth.User"
+
+# ── Django REST Framework (minimal; customize if you need)
+REST_FRAMEWORK = {
+    "DEFAULT_AUTHENTICATION_CLASSES": [],
+    "DEFAULT_PERMISSION_CLASSES": [],
+}
+
+# ── CORS (uncomment if you use React locally)
 # CORS_ALLOWED_ORIGINS = [
 #     "http://localhost:3000",
 #     "http://localhost:5173",
 # ]
 
-# ── Mongo (Atlas) – my_events_backend/mongo.py
-MONGODB_URI = os.getenv("MONGODB_URI")
+MONGODB_URI = os.getenv("MONGODB_URI", "")
 MONGODB_DB_NAME = os.getenv("MONGODB_DB_NAME", "my_events_backend")
 MONGODB_EVENTS_COLLECTION = os.getenv("MONGODB_EVENTS_COLLECTION", "events")
 MONGODB_USERS_COLLECTION = os.getenv("MONGODB_USERS_COLLECTION", "users")
