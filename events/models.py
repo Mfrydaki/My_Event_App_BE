@@ -7,7 +7,7 @@ MAX_TITLE_LENGTH = 200
 _ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
-def validate_event(d: Dict[str, Any]) -> None:
+def validate_event(d: Dict[str, Any], partial :bool =False) -> None:
     """
     Validate event data before saving to MongoDB.
 
@@ -20,6 +20,8 @@ def validate_event(d: Dict[str, Any]) -> None:
     ----------
     d : dict
     Event data dictionary.
+    partial: bool, optional
+    If True, validate only provided fields(for partial updates).
 
     Returns
     -------
@@ -31,25 +33,28 @@ def validate_event(d: Dict[str, Any]) -> None:
     ValueError
     If validation fails (missing title, invalid date, etc.).
     """
-    title = str(d.get("title", "") or "").strip()
+    if (not partial) or ("title" in d):
+     title = str(d.get("title", "") or "").strip()
     if not title:
         raise ValueError("Title is required")
     if len(title) > MAX_TITLE_LENGTH:
         raise ValueError(f"Title max length is {MAX_TITLE_LENGTH}")
+    
 
-    if "date" not in d:
-        raise ValueError("Date is required")
+    if (not partial) or ("date" in d):
+        if "date" not in d and not partial:
+            raise ValueError("Date is required")
+        date_str = str(d.get("date", "") or "").strip()
+        if not _ISO_DATE_RE.fullmatch(date_str):
+            raise ValueError("Date must be ISO string: YYYY-MM-DD")
+        try:
+            date.fromisoformat(date_str)  # validates calendar correctness
+        except Exception:
+            raise ValueError("Invalid calendar date (use real YYYY-MM-DD)")
 
-    date_str = str(d["date"] or "").strip()
-    if not _ISO_DATE_RE.fullmatch(date_str):
-        raise ValueError("Date must be ISO string: YYYY-MM-DD")
-    try:
-        date.fromisoformat(date_str)  # validates calendar correctness
-    except Exception:
-        raise ValueError("Invalid calendar date (use real YYYY-MM-DD)")
 
 
-def to_mongo_event(d: Mapping[str, Any]) -> Dict[str, Any]:
+def to_mongo_event(d: Mapping[str, Any], partial: bool = False) -> Dict[str, Any]:
     """
     Convert incoming event data into a MongoDB-ready document.
 
@@ -58,23 +63,40 @@ def to_mongo_event(d: Mapping[str, Any]) -> Dict[str, Any]:
     - Trims whitespace.
     - Keeps "date" as ISO string (YYYY-MM-DD) for simple lexicographic sorting.
     - Does not set "created_by"; views should attach the authenticated user id.
+    -When partial= True, only includes keys present in "d".
 
     Parameters
     ----------
     d : Mapping[str, Any]
     Event data.
+    partial: bool, optional 
+    If True, return only provided fields(for partial updates).
 
     Returns
     -------
     dict
     Sanitized event document for MongoDB storage.
     """
+    
+    fields = ("title", "description", "details", "date", "image")
+    out: Dict[str, Any] = {}
+
+    def clean(s: Any) -> str:
+        return str(s or "").strip()
+
+    if partial:
+        for k in fields:
+            if k in d:
+                out[k] = clean(d.get(k))
+        return out
+
+    # full document (create)
     return {
-        "title": str(d.get("title", "") or "").strip(),
-        "description": str(d.get("description", "") or "").strip(),
-        "details": str(d.get("details", "") or "").strip(),
-        "date": str(d.get("date", "") or "").strip(),
-        "image": str(d.get("image", "") or "").strip(),
+        "title": clean(d.get("title")),
+        "description": clean(d.get("description")),
+        "details": clean(d.get("details")),
+        "date": clean(d.get("date")),
+        "image": clean(d.get("image")),
         # "created_by": <to be set in the view using request.user_id>
     }
 
@@ -87,6 +109,7 @@ def event_to_public(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
     -----
     - Converts "_id" (ObjectId) to string.
     - Normalizes date to ISO string (YYYY-MM-DD) if stored as datetime/date or ISO datetime.
+    - Ensures 'attendees' is always a list of strings (user ids).
 
     Parameters
     ----------
@@ -102,7 +125,8 @@ def event_to_public(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
     id_str: Optional[str] = str(_id) if _id is not None else None
 
     raw_date = event_doc.get("date")
-    date_str = ""
+    date_str = str(raw_date or "").strip()
+
     if isinstance(raw_date, datetime):
         date_str = raw_date.date().isoformat()
     elif isinstance(raw_date, date):
@@ -118,6 +142,10 @@ def event_to_public(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
         else:
             date_str = s
 
+    attendees = event_doc.get("attendees", [])
+    if not isinstance(attendees, list):
+        attendees = []
+
     return {
         "id": id_str,
         "title": str(event_doc.get("title", "") or "").strip(),
@@ -126,4 +154,5 @@ def event_to_public(event_doc: Mapping[str, Any]) -> Dict[str, Any]:
         "date": date_str,
         "image": str(event_doc.get("image", "") or "").strip(),
         "created_by": str(event_doc.get("created_by", "") or "").strip(),
+        "attendees": [str(uid) for uid in attendees],
     }

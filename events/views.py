@@ -52,7 +52,7 @@ def events_view(request: HttpRequest):
         validate_event(data)
 
         event_doc = to_mongo_event(data)
-        event_doc["created_by"] = request.user_id
+        event_doc["created_by"] = str(request.user_id)
         event_doc["attendees"] = []
 
         result = events_collection.insert_one(event_doc)
@@ -121,8 +121,8 @@ def event_detail_view(request: HttpRequest, event_id: str):
             return JsonResponse({"error": "Content-Type must be application/json"}, status=415)
         try:
             data = json.loads(request.body.decode("utf-8") or "{}")
-            validate_event(data)
-            update_doc = to_mongo_event(data)
+            validate_event(data, partial = True) 
+            update_doc = to_mongo_event(data, partial= True)
             update_doc.pop("created_by", None)
 
             events_collection.update_one({"_id": oid}, {"$set": update_doc})
