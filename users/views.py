@@ -142,7 +142,7 @@ def profile_view(request):
             return JsonResponse({"error": "Not found"}, status=404)
 
         # Step 3: Return public user data
-        return JsonResponse(user_to_public(doc), status=200)
+        return JsonResponse({"user" : user_to_public(doc)}, status=200)
 
     except Exception as e:
         return JsonResponse({"error": str(e)}, status=400)

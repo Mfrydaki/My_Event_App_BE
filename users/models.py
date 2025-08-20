@@ -39,9 +39,9 @@ def validate_login(d: Dict[str, Any]) -> None:
 Validate login data for authenticating a user.
 
 Notes
-    -----
+-----
 - Checks that "email" is valid and not empty.
- - Checks that "password" is provided.
+- Checks that "password" is provided.
 
 Returns
 -------
@@ -111,7 +111,10 @@ def user_to_public(doc: Mapping[str, Any]) -> Dict[str, Any]:
     Public-safe user data ready for API responses.
     """
     _id = doc.get("_id")
-    uid: Optional[str] = str(_id) if isinstance(_id, ObjectId) else (str(_id) if _id else None)
+    uid: Optional[str] = (
+         str(_id) if isinstance(_id, ObjectId)
+         else (str(_id) if _id else None))
+    
     return {
         "id": uid,
         "email": str(doc.get("email", "") or "").lower(),
