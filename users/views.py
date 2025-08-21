@@ -33,24 +33,19 @@ def register_view(request):
         415 Unsupported Media Type: If Content-Type is not application/json.
         400 Bad Request: For validation or other errors.
     """
-    # Step 1: Check request Content-Type
     if (request.content_type or "").split(";")[0].strip() != "application/json":
         return JsonResponse({"error": "Content-Type must be application/json"}, status=415)
 
     try:
-        # Step 2: Parse request body
         data = json.loads(request.body.decode("utf-8") or "{}")
         validate_register(data)
 
-        # Step 3: Prepare user document
         user_doc = to_mongo_user(data)
         users_collection = get_users_collection()
 
-        # Step 4: Save in MongoDB
         result = users_collection.insert_one(user_doc)
         saved = users_collection.find_one({"_id": result.inserted_id})
 
-        # Step 5: Return the new user (without token here)
         return JsonResponse({"user": user_to_public(saved)}, status=201)
 
     except DuplicateKeyError:
@@ -79,30 +74,24 @@ def login_view(request):
         415 Unsupported Media Type: If Content-Type is not application/json.
         400 Bad Request: For validation or other errors.
     """
-    # Step 1: Check request Content-Type
     if (request.content_type or "").split(";")[0].strip() != "application/json":
         return JsonResponse({"error": "Content-Type must be application/json"}, status=415)
 
     try:
-        # Step 2: Parse request body
         data = json.loads(request.body.decode("utf-8") or "{}")
         validate_login(data)
 
         email = data["email"].strip().lower()
         password = data["password"]
 
-        # Step 3: Find user in MongoDB
         users_collection = get_users_collection()
         doc = users_collection.find_one({"email": email})
 
-        # Step 4: Check password
         if not doc or not verify_password(doc.get("password", ""), password):
             return JsonResponse({"error": "Invalid credentials"}, status=401)
 
-        # Step 5: Create JWT token
         token = make_access_token(str(doc["_id"]), doc["email"])
 
-        # Step 6: Return user and token
         return JsonResponse({"user": user_to_public(doc), "access": token}, status=200)
 
     except Exception as e:
@@ -130,18 +119,18 @@ def profile_view(request):
         400 Bad Request: If the user id is not a valid ObjectId.
     """
     try:
-        # Step 1: Get user id from JWT
-        user_id = request.jwt.get("sub")
+        user_id = getattr(request, "user_id", None)
+        if not user_id:
+            return JsonResponse({"error": "Unauthorized"}, status =401)
+        
         if not ObjectId.is_valid(user_id):
             return JsonResponse({"error": "Invalid user id"}, status=400)
 
-        # Step 2: Find user in MongoDB
         users_collection = get_users_collection()
         doc = users_collection.find_one({"_id": ObjectId(user_id)})
         if not doc:
             return JsonResponse({"error": "Not found"}, status=404)
 
-        # Step 3: Return public user data
         return JsonResponse({"user" : user_to_public(doc)}, status=200)
 
     except Exception as e:

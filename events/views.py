@@ -5,9 +5,14 @@ from django.views.decorators.http import require_http_methods
 from bson import ObjectId
 
 from my_events_backend.mongo import get_events_collection
-from my_events_backend.auth import optional_jwt, require_jwt
+from my_events_backend.auth import( optional_jwt, require_jwt, decode_token,_get_token_from_request)
 from .models import validate_event, to_mongo_event, event_to_public
 
+def _is_json(request: HttpRequest) -> bool:
+    """
+    Return True if Content-Type is application/json (ignoring charset).
+    """
+    return (request.content_type or "").split(";")[0].strip() == "application/json"
 
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
@@ -40,11 +45,22 @@ def events_view(request: HttpRequest):
         cursor = events_collection.find({}).sort("date", 1)
         event_list = [event_to_public(doc) for doc in cursor]
         return JsonResponse(event_list, safe=False, status=200)
+    
+    user_id = getattr(request, "user_id", None)
 
-    if not getattr(request, "user_id", None):
-        return JsonResponse({"error": "Unauthorized"}, status=401)
+    if not user_id:
+        token = _get_token_from_request(request)
+        if not token:
+            return JsonResponse({"error": "Unauthorized"}, status=401)
 
-    if (request.content_type or "").split(";")[0].strip() != "application/json":
+        try:
+            claims = decode_token(token)
+            user_id = claims.get("sub")
+        except Exception:
+            return JsonResponse({"error": "Unauthorized"}, status=401)
+
+    
+    if not _is_json(request):
         return JsonResponse({"error": "Content-Type must be application/json"}, status=415)
 
     try:
@@ -52,8 +68,8 @@ def events_view(request: HttpRequest):
         validate_event(data)
 
         event_doc = to_mongo_event(data)
-        event_doc["created_by"] = str(request.user_id)
-        event_doc["attendees"] = []
+        event_doc["created_by"] = str(user_id)
+        event_doc.setdefault( "attendees",[])
 
         result = events_collection.insert_one(event_doc)
         saved_event = events_collection.find_one({"_id": result.inserted_id})
@@ -65,7 +81,7 @@ def events_view(request: HttpRequest):
 
 @csrf_exempt
 @require_http_methods(["GET", "PUT", "DELETE"])
-@optional_jwt
+@require_jwt
 def event_detail_view(request: HttpRequest, event_id: str):
     """
     Retrieve, update, or delete an event by ID.
@@ -106,26 +122,29 @@ def event_detail_view(request: HttpRequest, event_id: str):
         if not event_doc:
             return JsonResponse({"error": "Not found"}, status=404)
         return JsonResponse(event_to_public(event_doc), status=200)
-
-    if not getattr(request, "user_id", None):
-        return JsonResponse({"error": "Unauthorized"}, status=401)
-
+    
+    # For PUT/DELETE: must exist and must be owned by current user
     if not event_doc:
         return JsonResponse({"error": "Not found"}, status=404)
 
-    if event_doc.get("created_by") != request.user_id:
+    # Owner check (tolerant to string/ObjectId types)
+    if str(event_doc.get("created_by", "")) != str(request.user_id):
         return JsonResponse({"error": "Forbidden"}, status=403)
 
     if request.method == "PUT":
-        if (request.content_type or "").split(";")[0].strip() != "application/json":
+        if not _is_json(request):
             return JsonResponse({"error": "Content-Type must be application/json"}, status=415)
         try:
             data = json.loads(request.body.decode("utf-8") or "{}")
             validate_event(data, partial = True) 
+
+            #Never allow identity/ownership changes
             update_doc = to_mongo_event(data, partial= True)
+            update_doc.pop ("id", None)
             update_doc.pop("created_by", None)
 
-            events_collection.update_one({"_id": oid}, {"$set": update_doc})
+            if update_doc:
+                events_collection.update_one({"_id": oid}, {"$set": update_doc})
             updated_event = events_collection.find_one({"_id": oid})
             return JsonResponse(event_to_public(updated_event), status=200)
         except Exception as e:
@@ -135,7 +154,6 @@ def event_detail_view(request: HttpRequest, event_id: str):
     if result.deleted_count == 1:
         return JsonResponse({"deleted": True}, status=200)
     return JsonResponse({"error": "Not found"}, status=404)
-
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -156,23 +174,19 @@ def attend_event_view(request: HttpRequest, event_id: str):
         400 Bad Request: Invalid ID.
         404 Not Found: Event not found.
     """
-    events = get_events_collection()
+    events_collection = get_events_collection()
 
     if not ObjectId.is_valid(event_id):
         return JsonResponse({"error": "Invalid event id"}, status=400)
     oid = ObjectId(event_id)
 
-    event = events.find_one({"_id": oid})
+    event = events_collection.find_one({"_id": oid})
     if not event:
         return JsonResponse({"error": "Event not found"}, status=404)
 
-    user_id = request.user_id
-    if user_id not in event.get("attendees", []):
-        events.update_one({"_id": oid}, {"$addToSet": {"attendees": user_id}})
-
-    updated = events.find_one({"_id": oid})
+    events_collection.update_one({"_id": oid}, {"$addToSet": {"attendees": str(request.user_id)}})
+    updated = events_collection.find_one({"_id": oid})
     return JsonResponse(event_to_public(updated), status=200)
-
 
 @csrf_exempt
 @require_http_methods(["POST"])
@@ -193,19 +207,16 @@ def unattend_event_view(request: HttpRequest, event_id: str):
         400 Bad Request: Invalid ID.
         404 Not Found: Event not found.
     """
-    events = get_events_collection()
+    events_collection = get_events_collection()
 
     if not ObjectId.is_valid(event_id):
         return JsonResponse({"error": "Invalid event id"}, status=400)
     oid = ObjectId(event_id)
 
-    event = events.find_one({"_id": oid})
+    event = events_collection.find_one({"_id": oid})
     if not event:
         return JsonResponse({"error": "Event not found"}, status=404)
-
-    user_id = request.user_id
-    if user_id in event.get("attendees", []):
-        events.update_one({"_id": oid}, {"$pull": {"attendees": user_id}})
-
-    updated = events.find_one({"_id": oid})
+    
+    events_collection.update_one({"_id": oid}, {"$pull": {"attendees": str(request.user_id)}})
+    updated = events_collection.find_one({"_id": oid})
     return JsonResponse(event_to_public(updated), status=200)
