@@ -9,4 +9,8 @@ urlpatterns = [
 
     # Events routes
     path("events/", include("events.urls")),
+
+    #User's actions(attending)
+    path("api/users/", include("users.urls")),
+
 ]
