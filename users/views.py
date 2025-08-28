@@ -166,19 +166,22 @@ def register_view(request):
     JsonResponse
         201 Created: {"user": <public_user>} on success.
         409 Conflict: If email already exists.
-        415 Unsupported Media Type: If Content-Type is not application/json.
         400 Bad Request: For validation or other errors.
     """
-    if (request.content_type or "").split(";")[0].strip() != "application/json":
-        return JsonResponse({"error": "Content-Type must be application/json"}, status=415)
-
     try:
-        data = json.loads(request.body.decode("utf-8") or "{}")
+        # Parse request body as JSON
+        try:
+            data = json.loads(request.body.decode("utf-8") or "{}")
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON body"}, status=400)
+
+        # Validate required fields
         validate_register(data)
 
-        user_doc = to_mongo_user(data)
         users_collection = get_users_collection()
 
+        # Create MongoDB document and insert
+        user_doc = to_mongo_user(data)
         result = users_collection.insert_one(user_doc)
         saved = users_collection.find_one({"_id": result.inserted_id})
 
@@ -186,8 +189,12 @@ def register_view(request):
 
     except DuplicateKeyError:
         return JsonResponse({"error": "Email already exists"}, status=409)
-    except Exception as e:
+    except ValueError as e:
+        # From validate_register or manual checks
         return JsonResponse({"error": str(e)}, status=400)
+    except Exception as e:
+        # Generic fallback
+        return JsonResponse({"error": f"Bad Request: {str(e)}"}, status=400)
 
 
 @csrf_exempt

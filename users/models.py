@@ -2,6 +2,7 @@ from typing import Dict, Any, Mapping, Optional
 import re
 from django.contrib.auth.hashers import make_password, check_password
 from bson import ObjectId
+from datetime import datetime, timezone
 
 EMAIL_RE = re.compile(r"^[^@]+@[^@]+\.[^@]+$")
 
@@ -35,33 +36,33 @@ def validate_register(d: Dict[str, Any]) -> None:
         raise ValueError("Password is required")
 
 def validate_login(d: Dict[str, Any]) -> None:
- """
-Validate login data for authenticating a user.
+    """
+    Validate login data for authenticating a user.
 
-Notes
------
-- Checks that "email" is valid and not empty.
-- Checks that "password" is provided.
+    Notes
+    -----
+    - Checks that "email" is valid and not empty.
+    - Checks that "password" is provided.
 
-Returns
--------
-None
-Function completes silently if validation passes.
+    Returns
+    -------
+    None
+    Function completes silently if validation passes.
 
-Raises
-------
-ValueError
-If "email" is invalid or missing.
-If "password" is missing.
-"""
+    Raises
+    ------
+    ValueError
+    If "email" is invalid or missing.
+    If "password" is missing.
+    """
     
- email = str(d.get("email", "") or "").strip().lower()
- password = str(d.get("password", "") or "")
+    email = str(d.get("email", "") or "").strip().lower()
+    password = str(d.get("password", "") or "")
 
- if not email or not EMAIL_RE.fullmatch(email):
-        raise ValueError("Valid email is required")
- if not password:
-        raise ValueError("Password is required")
+    if not email or not EMAIL_RE.fullmatch(email):
+            raise ValueError("Valid email is required")
+    if not password:
+            raise ValueError("Password is required")
 
 def to_mongo_user(d: Mapping[str, Any]) -> Dict[str, Any]:
     """
@@ -88,7 +89,7 @@ def to_mongo_user(d: Mapping[str, Any]) -> Dict[str, Any]:
         "password": make_password(str(d["password"])),
         "first_name": str(d.get("first_name", "") or "").strip(),
         "last_name": str(d.get("last_name", "") or "").strip(),
-        "date_of_birth": str(d.get("date_of_birth", "") or "").strip() or None,
+        "created_at": datetime.now(timezone.utc),
     }
 
 def user_to_public(doc: Mapping[str, Any]) -> Dict[str, Any]:
@@ -115,12 +116,14 @@ def user_to_public(doc: Mapping[str, Any]) -> Dict[str, Any]:
          str(_id) if isinstance(_id, ObjectId)
          else (str(_id) if _id else None))
     
+    first = str(doc.get("first_name", "")or "")
+    last = str(doc.get("last_name", "")or "")
+
     return {
         "id": uid,
         "email": str(doc.get("email", "") or "").lower(),
-        "first_name": str(doc.get("first_name", "") or ""),
-        "last_name": str(doc.get("last_name", "") or ""),
-        "date_of_birth": doc.get("date_of_birth") or None,
+        "first_name":first,
+        "last_name": last
     }
 
 def verify_password(hashed: str, raw: str) -> bool:

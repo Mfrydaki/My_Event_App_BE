@@ -13,4 +13,6 @@ urlpatterns = [
     #User's actions(attending)
     path("api/users/", include("users.urls")),
 
+   
+
 ]
